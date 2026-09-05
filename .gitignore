@@ -11,3 +11,6 @@ data/raw/*
 # Operating system metadata
 .DS_Store
 Thumbs.db
+
+# Project reference materials
+prerequisites/
