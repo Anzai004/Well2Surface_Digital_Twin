@@ -1,7 +1,10 @@
 """
 Handles rod mechanics, viscous drag, effective stroke, SPM limits,
-dyno card rasterization, and 5-state rule-based diagnostics.
+dyno card rasterization, 5-state rule-based diagnostics, and the
+1D Gibbs damped wave equation solver for downhole card reconstruction.
 """
+
+from typing import Dict, Optional
 
 import numpy as np
 
@@ -14,7 +17,7 @@ def calculate_rod_stretch(
 ) -> float:
     """
     Calculates elastic rod stretch using Hooke's Law.
-    
+
     Formula:
         delta_L = (F_load * L_rod) / (A_rod * E_steel)
     """
@@ -30,7 +33,7 @@ def calculate_buoyant_weight(
 ) -> float:
     """
     Calculates submerged rod weight considering hydrostatic buoyancy.
-    
+
     Formula:
         W_buoy = W_rod_dry * (1 - rho_fluid / rho_steel)
     """
@@ -48,18 +51,18 @@ def calculate_viscous_drag(
 ) -> float:
     """
     Calculates viscous drag force acting on the rod string inside fluid column.
-    
+
     Formula:
         F_drag(t) = (2 * pi * mu(t) * v_rod * L_rod) / ln(D_tubing / D_rod)
     """
     if D_tubing <= D_rod:
         raise ValueError("Tubing inner diameter must be strictly greater than rod diameter.")
-    
+
     # Convert viscosity from cP to Pa·s (1 cP = 1e-3 Pa·s)
     mu_pascal_sec = mu_cp * 1e-3
     numerator = 2.0 * np.pi * mu_pascal_sec * v_rod * L_rod
     denominator = np.log(D_tubing / D_rod)
-    
+
     return float(numerator / denominator)
 
 
@@ -71,14 +74,14 @@ def calculate_pprl_and_check_yield(
 ) -> tuple[float, bool]:
     """
     Calculates Peak Surface Rod Load (PPRL) and triggers an interrupt flag if load > 90% yield limit.
-    
+
     Formula:
         PPRL = W_r + W_f + F_drag
     """
     pprl = W_r + W_f + F_drag
     threshold = 0.90 * yield_limit_load
     yield_interrupt_flag = bool(pprl > threshold)
-    
+
     return float(pprl), yield_interrupt_flag
 
 
@@ -90,7 +93,7 @@ def calculate_effective_stroke_and_displacement(
 ) -> tuple[float, float]:
     """
     Calculates downhole effective stroke length (S_eff) and fluid volumetric displacement.
-    
+
     Formulas:
         S_eff = S_surface - delta_L
         V_disp (m^3/day) = (pi / 4) * D_plunger^2 * S_eff * spm * 1440
@@ -98,7 +101,7 @@ def calculate_effective_stroke_and_displacement(
     S_eff = max(0.0, S_surface - delta_L)
     plunger_area = (np.pi / 4.0) * (D_plunger ** 2)
     daily_displacement_m3 = plunger_area * S_eff * spm * 1440.0
-    
+
     return float(S_eff), float(daily_displacement_m3)
 
 
@@ -112,14 +115,14 @@ def calculate_spm_safe_floor(
 ) -> float:
     """
     Calculates maximum safe strokes per minute (SPM_safe) to prevent rod fall hesitation.
-    
+
     Formula:
         SPM_safe(t) = K * (rho_steel - rho_fluid) * g / mu(t)
     Clamped to a minimum floor of 2.0 SPM.
     """
     if mu_cp <= 0:
         raise ValueError("Viscosity must be positive.")
-    
+
     spm_calc = (K_factor * (rho_steel - rho_fluid) * g) / mu_cp
     spm_safe = max(spm_floor, float(spm_calc))
     return spm_safe
@@ -135,13 +138,13 @@ def rasterize_dyno_card(
     into a 2D matrix tensor (grid_size x grid_size) normalized between [0, 255].
     """
     tensor_grid = np.zeros((grid_size, grid_size), dtype=np.uint8)
-    
+
     norm_pos = (position_array - np.min(position_array)) / (np.ptp(position_array) + 1e-8)
     norm_load = (load_array - np.min(load_array)) / (np.ptp(load_array) + 1e-8)
-    
+
     grid_x = np.clip((norm_pos * (grid_size - 1)).astype(int), 0, grid_size - 1)
     grid_y = np.clip(((1.0 - norm_load) * (grid_size - 1)).astype(int), 0, grid_size - 1)
-    
+
     tensor_grid[grid_y, grid_x] = 255
     return tensor_grid
 
@@ -171,5 +174,229 @@ def classify_dyno_card_5state(
         return "Fluid Pound / Low Fillage"
     if current_spm > spm_safe:
         return "Viscous Drag Sucking / High Friction"
-    
+
     return "Normal Operation"
+
+
+# ---------------------------------------------------------------------------
+# NEW: 1D Gibbs Damped Wave Equation Solver
+#   d^2u/dt^2 = a^2 * d^2u/dx^2 - c(t) * du/dt
+# ---------------------------------------------------------------------------
+
+def calculate_wave_speed_and_damping(
+    mu_cp: float,
+    A_rod: float,
+    D_tubing: float,
+    D_rod: float,
+    rho_steel: float = 7850.0,
+    E_steel: float = 2.07e11,
+) -> tuple[float, float]:
+    """
+    Computes the rod acoustic wave speed `a` and viscous damping factor `c`
+    used by the Gibbs equation.
+
+    Formulas:
+        a = sqrt(E_steel / rho_steel)                                   (~5000 m/s for steel)
+        c = (2 * pi * mu(t)) / (rho_steel * A_rod * ln(D_tubing/D_rod))
+
+    Note: `mu_cp` is treated as constant for the duration of a single wave
+    solve (one pumping stroke cycle is short relative to reservoir thermal
+    timescales) -- pass the current viscosity state from
+    calculate_andrade_viscosity() at the time this solve is triggered.
+    """
+    if D_tubing <= D_rod:
+        raise ValueError("Tubing inner diameter must be strictly greater than rod diameter.")
+    if A_rod <= 0:
+        raise ValueError(f"Rod cross-sectional area A_rod ({A_rod}) must be positive.")
+    if mu_cp <= 0:
+        raise ValueError(f"Viscosity mu_cp ({mu_cp}) must be positive.")
+    if rho_steel <= 0 or E_steel <= 0:
+        raise ValueError("rho_steel and E_steel must be positive.")
+
+    a_wave_speed = float(np.sqrt(E_steel / rho_steel))
+
+    mu_pascal_sec = mu_cp * 1e-3  # cP -> Pa.s
+    c_damping = float(
+        (2.0 * np.pi * mu_pascal_sec)
+        / (rho_steel * A_rod * np.log(D_tubing / D_rod))
+    )
+    return a_wave_speed, c_damping
+
+
+def check_cfl_stability(dt: float, dx: float, a_wave_speed: float, enforce: bool = True) -> float:
+    """
+    Checks the Courant-Friedrichs-Lewy (CFL) stability condition for the
+    explicit-in-space stencil used by solve_gibbs_wave_equation:
+
+        CFL ratio = a * dt / dx  <=  1.0   (i.e. dt <= dx / a)
+
+    Args:
+        dt: Time step (s).
+        dx: Spatial step (m).
+        a_wave_speed: Rod acoustic wave speed (m/s).
+        enforce: If True (default), raises ValueError when the ratio exceeds
+            1.0. If False, returns the ratio without raising (caller takes
+            responsibility -- useful for diagnostic/plotting code paths).
+
+    Returns:
+        float: The CFL ratio (a * dt / dx). Values <= 1.0 are stable.
+
+    Raises:
+        ValueError: If enforce=True and the CFL ratio exceeds 1.0.
+    """
+    if dt <= 0 or dx <= 0 or a_wave_speed <= 0:
+        raise ValueError("dt, dx, and a_wave_speed must all be strictly positive.")
+
+    cfl_ratio = (a_wave_speed * dt) / dx
+
+    if enforce and cfl_ratio > 1.0:
+        max_dt = dx / a_wave_speed
+        raise ValueError(
+            f"CFL stability violated: a*dt/dx = {cfl_ratio:.4f} > 1.0. "
+            f"Reduce dt to <= {max_dt:.6f} s (current dt = {dt} s) or increase "
+            f"num_spatial_nodes to raise dx tolerance."
+        )
+    return float(cfl_ratio)
+
+
+def solve_gibbs_wave_equation(
+    x_surface: np.ndarray,
+    dt: float,
+    L_rod: float,
+    mu_cp: float,
+    A_rod: float,
+    D_tubing: float,
+    D_rod: float,
+    rho_steel: float = 7850.0,
+    E_steel: float = 2.07e11,
+    num_spatial_nodes: int = 50,
+    enforce_cfl: bool = True,
+) -> Dict[str, np.ndarray]:
+    """
+    Solves the 1D damped Gibbs wave equation to reconstruct downhole rod
+    displacement u(L, t) and plunger load F_plunger(t) from a measured
+    surface position time series x_surface(t).
+
+    Governing PDE:
+        d^2u/dt^2 = a^2 * d^2u/dx^2 - c(t) * du/dt
+
+    Discretization (semi-implicit: explicit central-difference in space,
+    implicit-weighted damping in time -- matches the TRD Eq. 3 scheme):
+
+        u[i, j+1] = ( 2*u[i,j] - u[i,j-1]*(1 - c*dt)
+                      + (a*dt/dx)^2 * (u[i+1,j] - 2*u[i,j] + u[i-1,j]) )
+                    / (1 + c*dt)
+
+    Boundary Conditions:
+        Top    (x=0, i=0):    u(0, t) = x_surface(t)          [Dirichlet, measured]
+        Bottom (x=L, i=N-1):  du/dx|_{x=L} = 0                [free-end / no-load
+                               Neumann approximation, implemented via a mirrored
+                               ghost node so the boundary still evolves under the
+                               wave equation rather than being frozen]
+
+    Initial Conditions:
+        Rod string starts at rest: u(x, 0) = u(x, dt) = x_surface[0] for all x
+        (zero initial velocity, uniform initial displacement).
+
+    Args:
+        x_surface: 1-D array of measured surface (polished rod) position
+            samples over time, length = number of time steps, units: m.
+        dt: Time step between x_surface samples (s).
+        L_rod: Total rod string length (m).
+        mu_cp: Current dynamic fluid viscosity (cP) -- held constant for this
+            solve (see calculate_wave_speed_and_damping docstring).
+        A_rod: Rod cross-sectional area (m^2).
+        D_tubing: Tubing inner diameter (m).
+        D_rod: Rod outer diameter (m).
+        rho_steel: Steel density (kg/m^3).
+        E_steel: Young's modulus of steel (Pa).
+        num_spatial_nodes: Number of spatial grid points along the rod
+            (>= 3). Higher = finer dx = tighter CFL budget for a given dt.
+        enforce_cfl: If True (default), raises ValueError on CFL violation
+            instead of silently producing an unstable/divergent solution.
+
+    Returns:
+        dict with keys:
+            "u_downhole": np.ndarray, shape (num_time_steps,) -- u(L, t) (m)
+            "F_plunger": np.ndarray, shape (num_time_steps,) -- downhole
+                plunger load reconstructed from E*A*du/dx at x=L (N)
+            "u_grid": np.ndarray, shape (num_time_steps, num_spatial_nodes)
+                -- full displacement field, useful for surface-vs-downhole
+                dyno card overlay plotting
+            "dx": float, spatial step (m)
+            "a_wave_speed": float (m/s)
+            "c_damping": float (s^-1)
+            "cfl_ratio": float, a*dt/dx (<=1.0 is stable)
+
+    Raises:
+        ValueError: On invalid geometry/grid inputs, or CFL violation when
+            enforce_cfl=True.
+    """
+    if num_spatial_nodes < 3:
+        raise ValueError(f"num_spatial_nodes ({num_spatial_nodes}) must be >= 3.")
+    if L_rod <= 0:
+        raise ValueError(f"L_rod ({L_rod}) must be positive.")
+    if dt <= 0:
+        raise ValueError(f"dt ({dt}) must be positive.")
+
+    x_surface = np.asarray(x_surface, dtype=float)
+    if x_surface.ndim != 1 or x_surface.shape[0] < 2:
+        raise ValueError("x_surface must be a 1-D array with at least 2 time samples.")
+
+    num_time_steps = x_surface.shape[0]
+
+    a_wave_speed, c_damping = calculate_wave_speed_and_damping(
+        mu_cp=mu_cp, A_rod=A_rod, D_tubing=D_tubing, D_rod=D_rod,
+        rho_steel=rho_steel, E_steel=E_steel,
+    )
+
+    dx = L_rod / (num_spatial_nodes - 1)  # tunable: raise num_spatial_nodes for finer mesh
+    cfl_ratio = check_cfl_stability(dt=dt, dx=dx, a_wave_speed=a_wave_speed, enforce=enforce_cfl)
+
+    r2 = (a_wave_speed * dt / dx) ** 2  # squared Courant number, reused each step
+    one_minus_c_dt = 1.0 - c_damping * dt
+    one_plus_c_dt = 1.0 + c_damping * dt
+
+    u = np.zeros((num_time_steps, num_spatial_nodes), dtype=float)
+
+    # Initial conditions: rod at rest, uniform displacement = first surface sample
+    u[0, :] = x_surface[0]
+    u[1, :] = x_surface[0]
+    u[1, 0] = x_surface[1] if num_time_steps > 1 else x_surface[0]
+
+    last = num_spatial_nodes - 1
+
+    for j in range(1, num_time_steps - 1):
+        u_j = u[j, :]
+        u_jm1 = u[j - 1, :]
+
+        # Interior nodes (i = 1 .. last-1): standard central-difference stencil
+        laplacian = np.empty(num_spatial_nodes, dtype=float)
+        laplacian[1:last] = u_j[2:last + 1] - 2.0 * u_j[1:last] + u_j[0:last - 1]
+
+        # Bottom node (i = last): free-end Neumann BC via mirrored ghost node
+        # (u_ghost = u[last-1]) => laplacian = 2*(u[last-1] - u[last])
+        laplacian[last] = 2.0 * (u_j[last - 1] - u_j[last])
+
+        u_next = (
+            2.0 * u_j - u_jm1 * one_minus_c_dt + r2 * laplacian
+        ) / one_plus_c_dt
+
+        # Top boundary: overwrite with measured surface position (Dirichlet)
+        u_next[0] = x_surface[j + 1]
+
+        u[j + 1, :] = u_next
+
+    u_downhole = u[:, last]
+    # One-sided backward difference for du/dx at x=L to reconstruct plunger load
+    F_plunger = E_steel * A_rod * (u[:, last] - u[:, last - 1]) / dx
+
+    return {
+        "u_downhole": u_downhole,
+        "F_plunger": F_plunger,
+        "u_grid": u,
+        "dx": dx,
+        "a_wave_speed": a_wave_speed,
+        "c_damping": c_damping,
+        "cfl_ratio": cfl_ratio,
+    }
