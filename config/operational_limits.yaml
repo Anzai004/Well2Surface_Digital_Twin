@@ -1,0 +1,20 @@
+# SRP Operating Bounds & Thermal Safety Thresholds
+srp_limits:
+  min_spm: 2.0                      # Dynamic speed floor
+  max_spm: 12.0                     # Hardware mechanical upper bound
+  max_rod_stress_psi: 103500.0      # 90% of Grade D rod yield limit (115,000 psi)
+  min_pump_fillage_fraction: 0.70   # Fluid pound prevention floor
+  max_surface_stroke_length_m: 3.0
+  min_surface_stroke_length_m: 1.0
+
+steam_limits:
+  max_injection_temp_c: 350.0       # Saturated steam cap
+  max_injection_pressure_mpa: 12.0  # Boiler safety cutout
+  min_steam_quality: 0.0
+  max_steam_quality: 1.0
+
+economics:
+  oil_price_usd_bbl: 75.0
+  electricity_cost_usd_kwh: 0.12
+  steam_cost_usd_ton: 25.0
+  equipment_wear_penalty_factor: 0.05

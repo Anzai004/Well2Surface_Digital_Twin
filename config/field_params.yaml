@@ -1,0 +1,30 @@
+# Baghewala Field Heavy Oil Reservoir & PVT Parameters
+reservoir:
+  field_name: "Baghewala"
+  formation: "Jodhpur Sandstone"
+  native_temperature_c: 47.0
+  porosity_fraction: 0.28
+  initial_oil_saturation: 0.70
+  initial_water_saturation: 0.30
+  heated_zone_volume_m3: 1500.0
+
+pvt_fluid:
+  api_gravity: 18.0
+  andrade_constant_a: -14.28
+  andrade_constant_b: 5820.4
+  water_density_kg_m3: 1000.0
+  oil_density_kg_m3: 946.5
+
+thermal_capacities:
+  rock_matrix_density_kg_m3: 2650.0
+  rock_specific_heat_j_kg_c: 880.0
+  oil_specific_heat_j_kg_c: 2000.0
+  water_specific_heat_j_kg_c: 4184.0
+
+wellbore_geometry:
+  depth_m: 1200.0
+  tubing_inner_diameter_m: 0.0762   # 3-inch tubing
+  rod_outer_diameter_m: 0.0222      # 7/8-inch sucker rod
+  rod_cross_section_m2: 0.000388
+  steel_density_kg_m3: 7850.0
+  steel_youngs_modulus_pa: 2.1e11

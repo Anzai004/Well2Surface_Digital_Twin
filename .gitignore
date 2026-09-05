@@ -1,0 +1,13 @@
+# Python cache & build outputs
+__pycache__/
+*.py[cod]
+.venv/
+env/
+
+# Raw dataset isolation
+data/raw/*
+!data/raw/.gitkeep
+
+# Operating system metadata
+.DS_Store
+Thumbs.db

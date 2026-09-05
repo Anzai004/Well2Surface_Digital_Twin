@@ -1,0 +1,8 @@
+numpy>=1.26.0
+scipy>=1.12.0
+pandas>=2.2.0
+matplotlib>=3.8.0
+pyyaml>=6.0.1
+pylatex>=1.4.2
+pytest>=8.0.0
+streamlit>=1.31.0
