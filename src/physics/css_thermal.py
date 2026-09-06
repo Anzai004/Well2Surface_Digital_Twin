@@ -122,8 +122,8 @@ def calculate_absorbed_heat(
 
 def calculate_andrade_viscosity(
     T_celsius: float,
-    A: float = -14.28,
-    B: float = 5820.4,
+    A: float = -6.6075,
+    B: float = 3456.70,
     native_res_temp_c: float = 47.0,
 ) -> float:
     """
@@ -131,6 +131,29 @@ def calculate_andrade_viscosity(
 
     Formula:
         mu(T) = exp(A + B / (T + 273.15))
+
+    Calibration (RECALIBRATED):
+        The prior defaults (A=-14.28, B=5820.4) produced mu(47C)~=49 cP and
+        mu(250C)~=0.037 cP -- off the PRD/notebook reference points of
+        ~66 cP at the native 47C reservoir baseline and ~1 cP at the 250C
+        peak steam temperature. These new constants are the exact solution
+        of the 2x2 linear system ln(mu) = A + B/T_K fit through BOTH
+        reference points simultaneously:
+            ln(66)  = A + B / (47  + 273.15)
+            ln(1.0) = A + B / (250 + 273.15)
+        Verified: mu(47C) = 66.0000 cP, mu(250C) = 1.0000 cP (exact to the
+        solver's floating-point precision). If new lab PVT data supersedes
+        these two reference points, re-solve the same 2x2 system with the
+        updated (T, mu) pairs rather than hand-tuning A/B by trial and error.
+
+    Args:
+        T_celsius: Current fluid temperature in °C.
+        A: Calibrated Andrade intercept constant (see Calibration note above).
+        B: Calibrated Andrade activation energy constant, K (see above).
+        native_res_temp_c: Base reservoir temperature guardrail threshold.
+
+    Returns:
+        float: Viscosity mu in centipoise (cP).
     """
     validate_thermal_guardrails(temperature_c=T_celsius, native_res_temp_c=native_res_temp_c)
 

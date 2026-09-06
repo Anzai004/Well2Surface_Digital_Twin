@@ -10,8 +10,8 @@ reservoir:
 
 pvt_fluid:
   api_gravity: 18.0
-  andrade_constant_a: -14.28
-  andrade_constant_b: 5820.4
+  andrade_constant_a: -6.6075
+  andrade_constant_b: 3456.70
   water_density_kg_m3: 1000.0
   oil_density_kg_m3: 946.5
 
