@@ -1,0 +1,2 @@
+well_id,timestamp_utc,production_days,reservoir_temperature_c,dynamic_viscosity_cp,spm_actual,spm_safe,vfd_hz,pprl_lbs,rod_stretch_in,diagnostic_state,profit_rate_dj_dt,cutoff_triggered,cum_sor
+BGW-JH-07,2026-09-06T18:37:37Z,16.5,113.00986182323285,2.2089431708670784,5.0,8.0,30.0,20092.576720469886,1.8847854166540732,Normal Operation,1791.5595090434895,False,3.18

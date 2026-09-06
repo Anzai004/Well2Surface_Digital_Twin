@@ -1,0 +1,16 @@
+{
+  "well_id": "BGW-JH-07",
+  "timestamp_utc": "2026-09-06T18:37:37Z",
+  "production_days": 16.5,
+  "reservoir_temperature_c": 113.00986182323285,
+  "dynamic_viscosity_cp": 2.2089431708670784,
+  "spm_actual": 5.0,
+  "spm_safe": 8.0,
+  "vfd_hz": 30.0,
+  "pprl_lbs": 20092.576720469886,
+  "rod_stretch_in": 1.8847854166540732,
+  "diagnostic_state": "Normal Operation",
+  "profit_rate_dj_dt": 1791.5595090434895,
+  "cutoff_triggered": false,
+  "cum_sor": 3.18
+}
