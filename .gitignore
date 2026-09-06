@@ -1,16 +1,39 @@
-# Python cache & build outputs
+# Python cache, bytecode, and test artifacts
 __pycache__/
 *.py[cod]
-.venv/
-env/
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Raw dataset isolation
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Data isolation (preserves folder structure via .gitkeep)
 data/raw/*
 !data/raw/.gitkeep
 
-# Operating system metadata
+# Generated Simulation Artifacts & Reports
+reports/*
+!reports/.gitkeep
+
+# LaTeX build intermediates (in case pdflatex runs in root)
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Project reference materials & local notes
+prerequisites/
+
+# IDE and OS metadata
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
-
-# Project reference materials
-prerequisites/
+*.tmp
