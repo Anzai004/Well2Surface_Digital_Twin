@@ -6,3 +6,4 @@ pyyaml>=6.0.1
 pylatex>=1.4.2
 pytest>=8.0.0
 streamlit>=1.31.0
+plotly>=5.18.0plotly>=5.18.0
