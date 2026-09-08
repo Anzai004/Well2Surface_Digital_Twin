@@ -1,7 +1,6 @@
 """
 Well2Surface Digital Twin - ISA-101 SCADA Control Cockpit
 Asset: Baghewala Field Heavy Oil Operations (18° API)
-File: src/dashboard/app.py
 """
 
 import json
@@ -128,6 +127,7 @@ st.markdown(ISA101_CSS, unsafe_allow_html=True)
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 STATE_FILE = ROOT_DIR / "reports" / "latest_state.json"
 TELEMETRY_CSV = ROOT_DIR / "reports" / "telemetry_log.csv"
+REPORT_PDF = ROOT_DIR / "reports" / "cycle_summary.pdf"
 
 
 # ---------------------------------------------------------
@@ -591,7 +591,7 @@ elif cockpit_screen == "Screen 2: EOR Cycle Economics":
         )
         render_chart(fig_sor)
 
-    # Historical Telemetry Log Table
+    # Historical Telemetry Log Table & Export Action Bar
     if TELEMETRY_CSV.exists():
         st.markdown("---")
         st.markdown(f"#### SCADA Telemetry Stream History ({currency_option.split()[0]})")
@@ -600,5 +600,35 @@ elif cockpit_screen == "Screen 2: EOR Cycle Economics":
             if is_inr and "profit_rate_dj_dt" in hist_df.columns:
                 hist_df[f"profit_rate_dj_dt ({currency_symbol})"] = (hist_df["profit_rate_dj_dt"] * fx_rate).round(0)
             st.dataframe(hist_df, width=1200, height=180)
+
+            # Export Action Bar
+            col_csv, col_pdf, col_spacer = st.columns([1.5, 2, 3])
+
+            with col_csv:
+                csv_bytes = hist_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Export Telemetry CSV",
+                    data=csv_bytes,
+                    file_name=f"baghewala_telemetry_{currency_option.split()[0].lower()}.csv",
+                    mime="text/csv",
+                    help="Download complete SCADA telemetry history in CSV format",
+                )
+
+            with col_pdf:
+                if REPORT_PDF.exists():
+                    with open(REPORT_PDF, "rb") as pdf_f:
+                        st.download_button(
+                            label="📄 Download Engineering Report (PDF)",
+                            data=pdf_f.read(),
+                            file_name="Well2Surface_Cycle_Summary.pdf",
+                            mime="application/pdf",
+                            help="Download compiled MiKTeX engineering summary report",
+                        )
+                else:
+                    st.button(
+                        "📄 Engineering PDF (Local TeX Required)",
+                        disabled=True,
+                        help="Run python main.py locally with pdflatex installed to compile the PDF report",
+                    )
         except Exception:
             pass
