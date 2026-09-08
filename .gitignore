@@ -19,6 +19,8 @@ data/raw/*
 # Generated Simulation Artifacts & Reports
 reports/*
 !reports/.gitkeep
+!reports/latest_state.json
+!reports/telemetry_log.csv
 
 # LaTeX build intermediates (in case pdflatex runs in root)
 *.aux
