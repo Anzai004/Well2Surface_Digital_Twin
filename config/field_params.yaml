@@ -27,4 +27,4 @@ wellbore_geometry:
   rod_outer_diameter_m: 0.0222      # 7/8-inch sucker rod
   rod_cross_section_m2: 0.000388
   steel_density_kg_m3: 7850.0
-  steel_youngs_modulus_pa: 2.1e11
+  steel_youngs_modulus_pa: 2.1e+11
